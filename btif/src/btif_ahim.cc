@@ -69,7 +69,6 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 #include <hardware/audio.h>
 #include <vector>
 
-
 using bluetooth::audio::aidl::le_audio::LeAudioClientInterface;
 
 using AudioConfigurationAIDL =
@@ -552,17 +551,36 @@ bool btif_ahim_setup_codec(uint8_t profile) {
       uint16_t profile_type = btif_ahim_get_lea_active_profile(profile);
       BTIF_TRACE_IMP("%s: AIDL, profile_type: %d", __func__, profile_type);
       if(profile_type == BAP || profile_type == GCP) {  // ToAIr only
-        if (!leAudio_get_selected_hal_codec_config(&lea_tx_config, profile,
-                                                    TX_ONLY_CONFIG)) {
-          LOG(ERROR) << __func__ << ": Failed to get CodecConfiguration";
-          return false;
-        }
+        CodecIndex codec_type = (CodecIndex) pclient_cbs[profile - 1]->get_codec_type(TX_ONLY_CONFIG);
+        if (codec_type == CodecIndex::CODEC_INDEX_SOURCE_APTX_ADAPTIVE_R4) {
+          if (!leAudio_get_selected_hal_codec_config(&lea_tx_config, profile,
+                                                      TX_ONLY_CONFIG)) {
+            LOG(ERROR) << __func__ << ": Failed to get CodecConfiguration";
+            return false;
+          }
+          if(unicastSinkClientInterface)
+            unicastSinkClientInterface->UpdateAudioConfigToHal(lea_tx_config);
 
-        //LOG(ERROR) << __func__
-        //     << ": audio_config_tag: " << lea_tx_config.getTag();
-        // TODO to fill both session/single session configs based on profile
-        if(unicastSinkClientInterface)
-          unicastSinkClientInterface->UpdateAudioConfigToHal(lea_tx_config);
+          if (!leAudio_get_selected_hal_codec_config(&lea_rx_config, profile,
+                                                      TX_RX_BOTH_CONFIG)) {
+            LOG(ERROR) << __func__ << ": Failed to get CodecConfiguration";
+            return false;
+          }
+          if(unicastSourceClientInterface)
+            unicastSourceClientInterface->UpdateAudioConfigToHal(lea_rx_config);
+        } else {
+            if (!leAudio_get_selected_hal_codec_config(&lea_tx_config, profile,
+                                                      TX_ONLY_CONFIG)) {
+            LOG(ERROR) << __func__ << ": Failed to get CodecConfiguration";
+              return false;
+            }
+
+            //LOG(ERROR) << __func__
+            //     << ": audio_config_tag: " << lea_tx_config.getTag();
+            // TODO to fill both session/single session configs based on profile
+            if(unicastSinkClientInterface)
+              unicastSinkClientInterface->UpdateAudioConfigToHal(lea_tx_config);
+        }
       } else if(profile_type == BAP_CALL ||
                 profile_type == GCP_RX) { // Toair and FromAir
         if (!leAudio_get_selected_hal_codec_config(&lea_tx_config, profile,
@@ -619,8 +637,16 @@ void btif_ahim_start_session(uint8_t profile) {
                btif_ahim_get_lea_active_profile(profile);
       BTIF_TRACE_IMP("%s: AIDL, profile_type: %d", __func__, profile_type);
       if(profile_type == BAP || profile_type == GCP) {  // ToAIr only
-        if(unicastSinkClientInterface)
-          unicastSinkClientInterface->StartSession();
+        CodecIndex codec_type = (CodecIndex) pclient_cbs[profile - 1]->get_codec_type(TX_ONLY_CONFIG);
+        if (codec_type == CodecIndex::CODEC_INDEX_SOURCE_APTX_ADAPTIVE_R4) {
+          if(unicastSinkClientInterface)
+            unicastSinkClientInterface->StartSession();
+          if(unicastSourceClientInterface)
+            unicastSourceClientInterface->StartSession();
+        } else {
+          if(unicastSinkClientInterface)
+            unicastSinkClientInterface->StartSession();
+        }
       } else if(profile_type == BAP_CALL ||
                 profile_type == GCP_RX) { // Toair and FromAir
         if(unicastSinkClientInterface)
